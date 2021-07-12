@@ -1,4 +1,7 @@
+import hashlib
+
 import neptune.new as neptune
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,9 +9,8 @@ import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
 from sklearn.metrics import accuracy_score
+from torch.utils.data import random_split
 from torchviz import make_dot
-import numpy as np
-import hashlib
 
 
 class UnNormalize(object):
@@ -40,48 +42,53 @@ class Net(nn.Module):
         return x
 
 
-PARAMS = {'batch_size': 128,
-          'fc_out_features': 64,
-          'lr': 0.009,
-          'momentum': 0.95,
-          'n_epochs': 3}
+PARAMS = {"batch_size": 128,
+          "fc_out_features": 64,
+          "lr": 0.009,
+          "momentum": 0.95,
+          "n_epochs": 3}
 
 # Initialize Neptune
-run = neptune.init(project='common/project-cv',
-                   tags=['pytorch', 'CIFAR-10'])
+run = neptune.init(project="common/project-cv",
+                   tags=["pytorch", "CIFAR-10"])
 
 # Log parameters
-run['model/params'] = PARAMS
+run["model/params"] = PARAMS
 
 transform = transforms.Compose([transforms.ToTensor(),
                                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
 un_normalize_img = UnNormalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
 
-train_set = torchvision.datasets.CIFAR10(root='./data', train=True,
-                                         download=True, transform=transform)
-train_loader = torch.utils.data.DataLoader(train_set, batch_size=PARAMS['batch_size'],
+ts = torchvision.datasets.CIFAR10(root="./data", train=True,
+                                  download=True, transform=transform)
+train_subsets = random_split(ts, [len(ts)-100, 100], generator=torch.Generator().manual_seed(8652))
+train_set = train_subsets[0]
+train_loader = torch.utils.data.DataLoader(train_set, batch_size=PARAMS["batch_size"],
                                            shuffle=True, num_workers=2)
 
-test_set = torchvision.datasets.CIFAR10(root='./data', train=False,
+test_set = torchvision.datasets.CIFAR10(root="./data", train=False,
                                         download=True, transform=transform)
-test_loader = torch.utils.data.DataLoader(test_set, batch_size=PARAMS['batch_size'],
+test_loader = torch.utils.data.DataLoader(test_set, batch_size=PARAMS["batch_size"],
                                           shuffle=False, num_workers=2)
 
-classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+classes = ("plane", "car", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck")
 
 # Log data version
-run['data/version/train'] = hashlib.md5(np.ascontiguousarray(train_set.data)).hexdigest()
-run['data/version/test'] = hashlib.md5(np.ascontiguousarray(test_set.data)).hexdigest()
+run["data/train/version"] = hashlib.md5(np.ascontiguousarray(train_set.dataset.data[train_set.indices])).hexdigest()
+run["data/test/version"] = hashlib.md5(np.ascontiguousarray(test_set.data)).hexdigest()
+
+run["data/train/size"] = len(train_set)
+run["data/test/size"] = len(test_set)
 
 # Log class names
-run['data/classes'] = classes
+run["data/classes"] = classes
 
-net = Net(PARAMS['fc_out_features'])
+net = Net(PARAMS["fc_out_features"])
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(net.parameters(), lr=PARAMS['lr'], momentum=PARAMS['momentum'])
+optimizer = optim.SGD(net.parameters(), lr=PARAMS["lr"], momentum=PARAMS["momentum"])
 
-for epoch in range(PARAMS['n_epochs']):
+for epoch in range(PARAMS["n_epochs"]):
     for i, data in enumerate(train_loader, 0):
         inputs, labels = data
         optimizer.zero_grad()
@@ -89,13 +96,13 @@ for epoch in range(PARAMS['n_epochs']):
         loss = criterion(outputs, labels)
 
         # Log batch loss
-        run['batch/loss'].log(loss)
+        run["metrics/batch/loss"].log(loss)
 
         y_true = labels.cpu().detach().numpy()
         y_pred = outputs.argmax(axis=1).cpu().detach().numpy()
 
         # Log batch accuracy
-        run['batch/accuracy'].log(accuracy_score(y_true, y_pred))
+        run["metrics/batch/accuracy"].log(accuracy_score(y_true, y_pred))
 
         loss.backward()
         optimizer.step()
@@ -110,7 +117,7 @@ for epoch in range(PARAMS['n_epochs']):
 
                 name = "pred: {}".format(classes[pred_label_idx])
                 desc_target = "target: {}".format(classes[label])
-                desc_classes = '\n'.join(['class {}: {}'.format(classes[i], pred)
+                desc_classes = "\n".join(["class {}: {}".format(classes[i], pred)
                                          for i, pred in enumerate(F.softmax(prediction, dim=0))])
                 description = "{} \n{}".format(desc_target, desc_classes)
                 run["train_preds/epoch_{}".format(epoch)].log(
@@ -120,8 +127,8 @@ for epoch in range(PARAMS['n_epochs']):
                 )
 
 # Log model weights
-torch.save(net.state_dict(), 'cifar_net.pth')
-run['model/dict'].upload('cifar_net.pth')
+torch.save(net.state_dict(), "cifar_net.pth")
+run["model/dict"].upload("cifar_net.pth")
 
 correct = 0
 total = 0
@@ -134,20 +141,20 @@ with torch.no_grad():
         correct += (predicted == labels).sum().item()
 
 # Log test accuracy
-run['test/total_accuracy'] = correct / total
+run["test/total_accuracy"] = correct / total
 
 # Log sample batch
 data = iter(test_loader).next()
 for image, label in zip(data[0], data[1]):
     image = image / 2 + 0.5
-    run['data/sample/class-{}-({})'.format(label, classes[label])].\
+    run["data/test/sample/class-{}-({})".format(label, classes[label])].\
         log(neptune.types.File.as_image(np.transpose(image.numpy(), (1, 2, 0))))
 
 # Log model visualization
 y = net(data[0])
 model_vis = make_dot(y.mean(), params=dict(net.named_parameters()))
-model_vis.format = 'png'
-model_vis.render('model_vis')
-run['model/visualization'] = neptune.types.File('model_vis.png')
+model_vis.format = "png"
+model_vis.render("model_vis")
+run["model/visualization"] = neptune.types.File("model_vis.png")
 
 run.wait()
