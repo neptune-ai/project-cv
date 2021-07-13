@@ -46,7 +46,7 @@ PARAMS = {"batch_size": 128,
           "fc_out_features": 64,
           "lr": 0.009,
           "momentum": 0.95,
-          "n_epochs": 3}
+          "n_epochs": 10}
 
 # Initialize Neptune
 run = neptune.init(project="common/project-cv",
