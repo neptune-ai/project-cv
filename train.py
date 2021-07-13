@@ -42,12 +42,12 @@ class Net(nn.Module):
         return x
 
 
-params = {"batch_size": 64,
+params = {"batch_size": 256,
           "fc_out_features": 64,
-          "lr": 0.019,
+          "lr": 0.013,
           "momentum": 0.99,
           "n_epochs": 10,
-          "optimizer": "SGD"}
+          "optimizer": "Adam"}
 
 # (neptune) create run
 run = neptune.init(project="common/project-cv",
@@ -114,7 +114,8 @@ for epoch in range(params["n_epochs"]):
         optimizer.step()
 
         # (neptune) log image predictions
-        if i == len(train_loader)-382:
+        if i == len(train_loader)-2:
+            n_imgs = 0
             for image, label, prediction in zip(inputs, labels, outputs):
                 img = image.detach().cpu()
                 img_np = un_normalize_img(img).permute(1, 2, 0).numpy()
@@ -131,6 +132,9 @@ for epoch in range(params["n_epochs"]):
                     name=name,
                     description=description
                 )
+                if n_imgs == 20:
+                    break
+                n_imgs += 1
 
 # (neptune) log model weights after training
 torch.save(net.state_dict(), "cifar_net.pth")
@@ -151,10 +155,15 @@ run["training/test_accuracy"] = correct / total
 
 # (neptune) log sample batch as data sample
 data = iter(test_loader).next()
+m_imgs = 0
 for image, label in zip(data[0], data[1]):
     image = image / 2 + 0.5
     run["data/sample/class-{}-({})".format(label, classes[label])].\
         log(neptune.types.File.as_image(np.transpose(image.numpy(), (1, 2, 0))))
+
+    if m_imgs == 30:
+        break
+    m_imgs += 1
 
 # (neptune) log model visualization
 y = net(data[0])
