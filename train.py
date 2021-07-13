@@ -48,11 +48,11 @@ PARAMS = {"batch_size": 128,
           "momentum": 0.95,
           "n_epochs": 10}
 
-# Initialize Neptune
+# (neptune) create run
 run = neptune.init(project="common/project-cv",
                    tags=["pytorch", "CIFAR-10"])
 
-# Log parameters
+# (neptune) log parameters
 run["model/params"] = PARAMS
 
 transform = transforms.Compose([transforms.ToTensor(),
@@ -74,14 +74,15 @@ test_loader = torch.utils.data.DataLoader(test_set, batch_size=PARAMS["batch_siz
 
 classes = ("plane", "car", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck")
 
-# Log data version
+# (neptune) log data version
 run["data/train/version"] = hashlib.md5(np.ascontiguousarray(train_set.dataset.data[train_set.indices])).hexdigest()
 run["data/test/version"] = hashlib.md5(np.ascontiguousarray(test_set.data)).hexdigest()
 
+# (neptune) log datasets sizes
 run["data/train/size"] = len(train_set)
 run["data/test/size"] = len(test_set)
 
-# Log class names
+# (neptune) log class names
 run["data/classes"] = classes
 
 net = Net(PARAMS["fc_out_features"])
@@ -95,19 +96,19 @@ for epoch in range(PARAMS["n_epochs"]):
         outputs = net(inputs)
         loss = criterion(outputs, labels)
 
-        # Log batch loss
+        # (neptune) log batch loss
         run["training/metrics/batch/loss"].log(loss)
 
         y_true = labels.cpu().detach().numpy()
         y_pred = outputs.argmax(axis=1).cpu().detach().numpy()
 
-        # Log batch accuracy
+        # (neptune) log batch accuracy
         run["training/metrics/batch/accuracy"].log(accuracy_score(y_true, y_pred))
 
         loss.backward()
         optimizer.step()
 
-        # Log image predictions
+        # (neptune) log image predictions
         if i == len(train_loader)-382:
             for image, label, prediction in zip(inputs, labels, outputs):
                 img = image.detach().cpu()
@@ -126,7 +127,7 @@ for epoch in range(PARAMS["n_epochs"]):
                     description=description
                 )
 
-# Log model weights
+# (neptune) log model weights after training
 torch.save(net.state_dict(), "cifar_net.pth")
 run["model/dict"].upload("cifar_net.pth")
 
@@ -140,17 +141,17 @@ with torch.no_grad():
         total += labels.size(0)
         correct += (predicted == labels).sum().item()
 
-# Log test accuracy
+# (neptune) log test accuracy
 run["training/test_accuracy"] = correct / total
 
-# Log sample batch
+# (neptune) log sample batch as data sample
 data = iter(test_loader).next()
 for image, label in zip(data[0], data[1]):
     image = image / 2 + 0.5
     run["data/sample/class-{}-({})".format(label, classes[label])].\
         log(neptune.types.File.as_image(np.transpose(image.numpy(), (1, 2, 0))))
 
-# Log model visualization
+# (neptune) log model visualization
 y = net(data[0])
 model_vis = make_dot(y.mean(), params=dict(net.named_parameters()))
 model_vis.format = "png"
