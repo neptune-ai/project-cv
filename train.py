@@ -42,18 +42,19 @@ class Net(nn.Module):
         return x
 
 
-PARAMS = {"batch_size": 128,
+params = {"batch_size": 64,
           "fc_out_features": 64,
-          "lr": 0.009,
-          "momentum": 0.95,
-          "n_epochs": 10}
+          "lr": 0.019,
+          "momentum": 0.99,
+          "n_epochs": 10,
+          "optimizer": "SGD"}
 
 # (neptune) create run
 run = neptune.init(project="common/project-cv",
                    tags=["pytorch", "CIFAR-10"])
 
 # (neptune) log parameters
-run["model/params"] = PARAMS
+run["model/params"] = params
 
 transform = transforms.Compose([transforms.ToTensor(),
                                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
@@ -64,12 +65,12 @@ ts = torchvision.datasets.CIFAR10(root="./data", train=True,
                                   download=True, transform=transform)
 train_subsets = random_split(ts, [len(ts)-100, 100], generator=torch.Generator().manual_seed(8652))
 train_set = train_subsets[0]
-train_loader = torch.utils.data.DataLoader(train_set, batch_size=PARAMS["batch_size"],
+train_loader = torch.utils.data.DataLoader(train_set, batch_size=params["batch_size"],
                                            shuffle=True, num_workers=2)
 
 test_set = torchvision.datasets.CIFAR10(root="./data", train=False,
                                         download=True, transform=transform)
-test_loader = torch.utils.data.DataLoader(test_set, batch_size=PARAMS["batch_size"],
+test_loader = torch.utils.data.DataLoader(test_set, batch_size=params["batch_size"],
                                           shuffle=False, num_workers=2)
 
 classes = ("plane", "car", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck")
@@ -85,11 +86,15 @@ run["data/test/size"] = len(test_set)
 # (neptune) log class names
 run["data/classes"] = classes
 
-net = Net(PARAMS["fc_out_features"])
+net = Net(params["fc_out_features"])
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(net.parameters(), lr=PARAMS["lr"], momentum=PARAMS["momentum"])
 
-for epoch in range(PARAMS["n_epochs"]):
+if params["optimizer"] == "SGD":
+    optimizer = optim.SGD(net.parameters(), lr=params["lr"], momentum=params["momentum"])
+if params["optimizer"] == "Adam":
+    optimizer = optim.Adam(net.parameters(), lr=params["lr"])
+
+for epoch in range(params["n_epochs"]):
     for i, data in enumerate(train_loader, 0):
         inputs, labels = data
         optimizer.zero_grad()
