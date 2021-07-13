@@ -96,13 +96,13 @@ for epoch in range(PARAMS["n_epochs"]):
         loss = criterion(outputs, labels)
 
         # Log batch loss
-        run["metrics/batch/loss"].log(loss)
+        run["training/metrics/batch/loss"].log(loss)
 
         y_true = labels.cpu().detach().numpy()
         y_pred = outputs.argmax(axis=1).cpu().detach().numpy()
 
         # Log batch accuracy
-        run["metrics/batch/accuracy"].log(accuracy_score(y_true, y_pred))
+        run["training/metrics/batch/accuracy"].log(accuracy_score(y_true, y_pred))
 
         loss.backward()
         optimizer.step()
@@ -120,7 +120,7 @@ for epoch in range(PARAMS["n_epochs"]):
                 desc_classes = "\n".join(["class {}: {}".format(classes[i], pred)
                                          for i, pred in enumerate(F.softmax(prediction, dim=0))])
                 description = "{} \n{}".format(desc_target, desc_classes)
-                run["train_preds/epoch_{}".format(epoch)].log(
+                run["training/preds/epoch_{}".format(epoch)].log(
                     neptune.types.File.as_image(img_np),
                     name=name,
                     description=description
@@ -141,13 +141,13 @@ with torch.no_grad():
         correct += (predicted == labels).sum().item()
 
 # Log test accuracy
-run["test/total_accuracy"] = correct / total
+run["training/test_accuracy"] = correct / total
 
 # Log sample batch
 data = iter(test_loader).next()
 for image, label in zip(data[0], data[1]):
     image = image / 2 + 0.5
-    run["data/test/sample/class-{}-({})".format(label, classes[label])].\
+    run["data/sample/class-{}-({})".format(label, classes[label])].\
         log(neptune.types.File.as_image(np.transpose(image.numpy(), (1, 2, 0))))
 
 # Log model visualization
